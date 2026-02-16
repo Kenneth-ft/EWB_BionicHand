@@ -17,6 +17,13 @@ EWBHand::EWBHand() {
 
     // Reset sim angles
     for(int i=0; i<14; i++) _simulatedAngles[i] = 0.0;
+
+    // Initialize velocity tracking arrays
+    for(int i=0; i<14; i++) {
+        _lastAngles[i] = 0.0;
+        _lastTimes[i] = 0; // 0 indicates "never read before"
+        _angleOffset[i] = 0.0;
+    }
 }
 
 void EWBHand::begin() {
@@ -47,31 +54,7 @@ void EWBHand::begin() {
   // Remember to use 'Wire.beginTransmission(PCA_ADDR)' etc.
 }
 
-
-
 // --- PUBLIC METHODS ---
-
-// Helper to get all 3 angles for a finger
-// Assumption: Finger 0 = Sensors 0,1,2. Finger 1 = Sensors 3,4,5...
-void EWBHand::getFingerAngles(uint8_t fingerID, float outputAngles[3]) {
-    uint8_t startIdx = fingerID * 3; 
-    // Careful! Thumb might only have 2 joints? Adjust math if so.
-    
-    for(int i=0; i<3; i++) {
-        outputAngles[i] = readRawSensor(startIdx + i);
-    }
-}
-
-// Reads a specific sensor by Index (0-13)
-float EWBHand::readRawSensor(uint8_t sensorIndex) {
-    #ifdef SIMULATION_MODE
-        if(sensorIndex < 14) return _simulatedAngles[sensorIndex];
-        return 0.0;
-    #else
-        _selectMuxChannel(sensorIndex);
-        return _readAS5600();
-    #endif
-}
 
 void EWBHand::setFingerSpeed(uint8_t fingerID, float speed) {
   // 1. Clamp speed between -1.0 and 1.0
@@ -108,11 +91,89 @@ void EWBHand::setFingerSpeed(uint8_t fingerID, float speed) {
   // Map fingerID to PCA channel (maybe Finger 0 is Channel 0, etc.)
 }
 
+// Helper to get all 3 angles for a finger
+// Assumption: Finger 0 = Sensors 0,1,2. Finger 1 = Sensors 3,4,5...
+void EWBHand::getFingerPose(uint8_t fingerID, FingerPose &pose) {
+    uint8_t startIdx = fingerID * 3; 
+    
+    // Read first two joints (Every finger has these)
+    pose.mcp = readRawSensor(startIdx);
+    pose.pip = readRawSensor(startIdx + 1);
+
+    // Handle the Thumb (ID 4) vs Fingers (ID 0-3)
+    if (fingerID == 4) {
+        pose.dip = -1.0; // Thumb has no DIP
+    } else {
+        pose.dip = readRawSensor(startIdx + 2);
+    }
+}
+
+// Reads a specific sensor by Index (0-13)
+float EWBHand::readRawSensor(uint8_t sensorIndex) {
+    if(sensorIndex > 13) return 0.0;
+    #ifdef SIMULATION_MODE
+        if(sensorIndex < 14) return _simulatedAngles[sensorIndex] - _angleOffset[sensorIndex];
+        return 0.0;
+    #else
+        _selectMuxChannel(sensorIndex);
+        return _readAS5600() - _angleOffset[sensorIndex];
+    #endif
+}
+
+float EWBHand::getJointVelocity(uint8_t sensorIndex) {
+    if(sensorIndex > 13) return 0.0;
+
+    float currentAngle = readRawSensor(sensorIndex); // We only track velocity of MCP (base joint)
+    unsigned long now = millis();
+
+    // 2. Handle First Run (or weird timing)
+    if (_lastTimes[sensorIndex] == 0) {
+        _lastAngles[sensorIndex] = currentAngle;
+        _lastTimes[sensorIndex] = now;
+        return 0.0; // No velocity on first frame
+    }
+
+    // 3. Calculate Time Delta (dt) in seconds
+    float dt = (now - _lastTimes[sensorIndex]) / 1000.0;
+
+    // Safety: If called too fast (< 1ms), return previous calculation to avoid divide-by-zero
+    if (dt < 0.001) return 0.0; 
+
+    // 4. Calculate Velocity (dTheta / dt)
+    float rawVelocity = (currentAngle - _lastAngles[sensorIndex]) / dt;
+
+    // 5. THE MAGIC FILTER (Alpha = 0.2 means "Trust new data 20%, old data 80%")
+    // This ignores rapid spikes (jitter) but tracks real movement.
+    float alpha = 0.2; 
+    _filteredVelocity[sensorIndex] = (alpha * rawVelocity) + ((1.0 - alpha) * _filteredVelocity[sensorIndex]);
+
+    // 6. Update Memory
+    _lastAngles[sensorIndex] = currentAngle;
+    _lastTimes[sensorIndex] = now;
+
+    return _filteredVelocity[sensorIndex];
+}
+
+void EWBHand::calibrate(){
+    #ifdef SIMULATION_MODE
+        // In sim, just set offsets to whatever the current fake angles are
+        for(int i = 0; i < 14; i++) _angleOffset[i] = _simulatedAngles[i];
+    #else
+        for(int i = 0; i < 14; i++){
+            _selectMuxChannel(i); // Switch Mux
+            _angleOffset[i] = _readAS5600(); // Read raw HW value
+        }
+    #endif
+}
+
 // --- PRIVATE HELPERS ---
 
 void EWBHand::_selectMuxChannel(uint8_t globalSensorIndex) {
   // Logic to switch between Mux A and B based on ID
   if (globalSensorIndex > 15) return; // do nothing if index is invalid
+
+  if(_currentMuxChannel == globalSensorIndex) return; //cancel function if channel already selected
+  _currentMuxChannel = globalSensorIndex; // Update cache
 
   // Map sensor 0-7 to Mux A, 8-15 to Mux B
   uint8_t muxAddr = (globalSensorIndex < 8) ? MUX_A_ADDR : MUX_B_ADDR;

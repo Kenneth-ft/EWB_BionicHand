@@ -22,6 +22,8 @@ Finger joint angles are measured by AS5600 Hall-Effect Encoders. These encoders 
 <summary><b>setFingerSpeed()</b></summary>
 <br>
 
+sends PWM signal to servo motor to move finger
+
 **Parameters:**
 - `fingerID` (uint8_t): 0 to 4, selects which finger to control
 - `speed` (float): -1.0 to 1.0, where -1.0 is full speed in one direction, 1.0 is full speed in the other direction, and 0.0 is stop
@@ -32,15 +34,14 @@ Finger joint angles are measured by AS5600 Hall-Effect Encoders. These encoders 
 </details>
 
 <details>
-<summary><b>getFingerAngles()</b></summary>
+<summary><b>getFingerPose()</b></summary>
 <br>
 
-Fills the passed array with three angles (MCP, PIP, DIP)
-You must pass an array of size 3!
+fetches angles for each finger joint, stores them in a struct
 
 **Parameters:**
 - `fingerID` (uint8_t): 0 to 4, selects which finger to control
-- `outputAngles[3]` (float): the output array to fill (must be size 3)
+- `&pose` (struct): finger pose struct
 
 **Returns:**
 - void
@@ -51,10 +52,40 @@ You must pass an array of size 3!
 <summary><b>readRawSensor()</b></summary>
 <br>
 
+gets the angle from a specific encoder
+
 **Parameters:**
 - `sensorIndex` (uint8_t): selects the sensor to read (see table above)
 
 **Returns:**
 - angle in degrees (float)
+
+</details>
+
+<details>
+<summary><b>getJointVelocity()</b></summary>
+<br>
+
+gets the angular velocity of a joint
+
+**Parameters:**
+- `sensorIndex` (uint8_t): selects the sensor to read (see table above)
+
+**Returns:**
+- angular velocity of selected joint (in degrees/s)
+
+</details>
+
+<details>
+<summary><b>calibrate()</b></summary>
+<br>
+
+stashes the current angle in an offset array to tare the joint angles
+
+**Parameters:**
+- none
+
+**Returns:**
+- void
 
 </details>
