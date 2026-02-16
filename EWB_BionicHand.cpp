@@ -172,14 +172,30 @@ void EWBHand::_selectMuxChannel(uint8_t globalSensorIndex) {
   // Logic to switch between Mux A and B based on ID
   if (globalSensorIndex > 15) return; // do nothing if index is invalid
 
-  if(_currentMuxChannel == globalSensorIndex) return; //cancel function if channel already selected
+
+  // 1. same channel check, cancel function if no change needed
+  if(_currentMuxChannel == globalSensorIndex) return;
+  
+
+  // 2. mux switch check, do we need to deactivate a mux?
+  // Integer division results in 0 for A, 1 for B, 31 for startup
+  if((_currentMuxChannel / 8) != (globalSensorIndex / 8)){
+
+    uint8_t notmuxAddr = !(globalSensorIndex < 8) ? MUX_A_ADDR : MUX_B_ADDR;
+
+    //deactivate unused mux
+    Wire.beginTransmission(notmuxAddr);
+    Wire.write(0);
+    Wire.endTransmission();
+  }
+  
   _currentMuxChannel = globalSensorIndex; // Update cache
 
-  // Map sensor 0-7 to Mux A, 8-15 to Mux B
+  // 3. Map sensor 0-7 to Mux A, 8-15 to Mux B
   uint8_t muxAddr = (globalSensorIndex < 8) ? MUX_A_ADDR : MUX_B_ADDR;
   uint8_t muxChan = (globalSensorIndex < 8) ? globalSensorIndex : (globalSensorIndex - 8);
-
-  // Send the switch command
+  
+  // 4. Send the switch command
   Wire.beginTransmission(muxAddr);
   Wire.write(1 << muxChan);
   Wire.endTransmission();
