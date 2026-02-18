@@ -1,0 +1,11 @@
+# Classes
+
+EWBHand KEYWORD1
+
+# Methods and Functions
+
+setFingerSpeed KEYWORD2
+getFingerPose KEYWORD2
+readRawSensor KEYWORD2
+getJointVelocity KEYWORD2
+calibrate KEYWORD2

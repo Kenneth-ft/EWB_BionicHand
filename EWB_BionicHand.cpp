@@ -7,6 +7,7 @@
 #define AS5600_ADDR 0x36
 
 #define PCA9685_MODE1 0x00
+#define PCA9685_MODE2 0x01
 #define PCA9685_PRE_SCALE 0xFE
 #define PCA9685_LED0_ON_L 0x06 // Register for Channel 0 start
 
@@ -45,6 +46,10 @@ void EWBHand::begin() {
     Wire.beginTransmission(PCA9685_ADDR);
     Wire.write(PCA9685_PRE_SCALE);
     Wire.write(121); // Prescaler for ~50Hz
+    Wire.endTransmission();
+    Wire.beginTransmission(PCA9685_ADDR);
+    Wire.write(PCA9685_MODE2);
+    Wire.write(0x04); // OUTDRV = 1 (totem pole) this is default, but the clanker told me to add this explicitly
     Wire.endTransmission();
     Wire.beginTransmission(PCA9685_ADDR);
     Wire.write(PCA9685_MODE1);
